@@ -1,105 +1,179 @@
-var Accessory, Service, Characteristic, hap, UUIDGen;
+let Accessory, Service, Characteristic, hap, UUIDGen;
+let FFMPEG = require("./ffmpeg").FFMPEG;
+let dgram = require("dgram");
+var gpio = require("rpi-gpio");
 
-var FFMPEG = require('./ffmpeg').FFMPEG;
-
-module.exports = function(homebridge) {
+module.exports = homebridge => {
   Accessory = homebridge.platformAccessory;
   hap = homebridge.hap;
   Service = homebridge.hap.Service;
   Characteristic = homebridge.hap.Characteristic;
   UUIDGen = homebridge.hap.uuid;
 
-  homebridge.registerPlatform("homebridge-camera-ffmpeg", "Camera-ffmpeg", ffmpegPlatform, true);
-}
+  homebridge.registerPlatform("homebridge-video-doorbell-button", "Video-DoorbellV2", videoDoorbellPlatform, true);
+};
 
-function ffmpegPlatform(log, config, api) {
-  var self = this;
+let videoDoorbellPlatform = class {
+  constructor(log, config, api) {
+    this.log = log;
+    this.config = config || {};
+    this.buttonSid = config["buttonSid"] || 0;
+    this.buttonState = 0;
+    this.locked = 1;
+    this.serverSocket = new dgram.createSocket({
+      type: "udp4",
+      reuseAddr: true
+    });
 
-  self.log = log;
-  self.config = config || {};
+    this.log.info("🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔");
+    this.log.info("🔔    Payziyev Maxmujon    🔔");
+    this.log.info("🔔    bio42@mail.ru        🔔");
+    this.log.info("🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔");
 
-  if (api) {
-    self.api = api;
-
-    if (api.version < 2.1) {
-      throw new Error("Unexpected API version.");
+    if (this.config.buttonSid) {
+      this.startServer();
     }
 
-    self.api.on('didFinishLaunching', self.didFinishLaunching.bind(this));
+    if (api) {
+      this.api = api;
+
+      if (api.version < 2.1) {
+        throw new Error("Unexpected API version.");
+      }
+
+      this.api.on("didFinishLaunching", event => this.didFinishLaunching(event));
+    }
+
+    if (this.config.gpio) {
+      gpio.on("change", (channel, value) => {
+        if (value == true) {
+          clearTimeout(this.clickButton);
+          this.clickButton = setTimeout(() => {
+            this.log("GPIO button is pressed");
+            this.doorbellService.getCharacteristic(Characteristic.ProgrammableSwitchEvent).setValue(1);
+          }, 100);
+        }
+      });
+      gpio.setup(this.config.gpio, gpio.DIR_IN, gpio.EDGE_BOTH);
+    }
   }
-}
 
-ffmpegPlatform.prototype.configureAccessory = function(accessory) {
-  // Won't be invoked
-}
+  startServer() {
+    this.serverSocket.on("message", msg => this.parseMessage(msg));
+    this.serverSocket.on("error", err => {
+      this.log.error("error, msg - %s, stack - %s\n", err.message, err.stack);
+    });
+    this.serverSocket.on("listening", () => {
+      this.log("Aqara server is listening on port 9898.");
+      this.serverSocket.addMembership("224.0.0.50");
+    });
+    this.serverSocket.bind({ port: 9898, exclusive: true });
+  }
 
-ffmpegPlatform.prototype.didFinishLaunching = function() {
-  var self = this;
-  var videoProcessor = self.config.videoProcessor || 'ffmpeg';
-  var interfaceName = self.config.interfaceName || '';
+  parseMessage(msg, rinfo) {
+    let json;
+    try {
+      json = JSON.parse(msg);
+    } catch (ex) {
+      this.log.error("Bad json %s", msg);
+      return;
+    }
+    let cmd = json["cmd"];
+    if (cmd == "report") {
+      if (json.sid == this.buttonSid) {
+        let data = JSON.parse(json["data"]);
+        if (data.status == "click" || data.status == "double_click" || data.status == "long_click_press" || data.status == "long_click_release") {
+          this.log("Mi/Aqara button is pressed");
+          this.doorbellService.getCharacteristic(Characteristic.ProgrammableSwitchEvent).setValue(1);
+        }
+      }
+    }
+  }
 
-  if (self.config.cameras) {
-    var configuredAccessories = [];
+  configureAccessory(accessory) {}
 
-    var cameras = self.config.cameras;
-    cameras.forEach(function(cameraConfig) {
-      var cameraName = cameraConfig.name;
-      var videoConfig = cameraConfig.videoConfig;
+  getLockTargetState(callback) {
+    callback(null, this.locked ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED);
+  }
 
-      if (!cameraName || !videoConfig) {
-        self.log("Missing parameters.");
+  getLockCurrentState(callback) {
+    callback(null, this.locked ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED);
+  }
+
+  setLockState(state, callback) {
+    if (this.locked != state) {
+      this.locked = state;
+      this.lockService.updateCharacteristic(Characteristic.LockCurrentState, this.locked ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED);
+      this.lockService.updateCharacteristic(Characteristic.LockTargetState, this.locked ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED);
+      setTimeout(() => {
+        if (this.locked == 1) this.locked = 0;
+        else this.locked = 1;
+
+        this.lockService.updateCharacteristic(Characteristic.LockCurrentState, this.locked ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED);
+        this.lockService.updateCharacteristic(Characteristic.LockTargetState, this.locked ? Characteristic.LockTargetState.SECURED : Characteristic.LockTargetState.UNSECURED);
+      }, 1000);
+      callback(null, true);
+    }
+  }
+
+  didFinishLaunching() {
+    let videoProcessor = this.config.videoProcessor || "ffmpeg";
+    let interfaceName = this.config.interfaceName || "";
+
+    if (this.config.camera) {
+      let configuredAccessories = [];
+
+      if (!this.config.camera.name || !this.config.camera.videoConfig) {
+        this.log("Missing parameters.");
         return;
       }
 
-      var uuid = UUIDGen.generate(cameraName);
-      var cameraAccessory = new Accessory(cameraName, uuid, hap.Accessory.Categories.CAMERA);
-      var cameraAccessoryInfo = cameraAccessory.getService(Service.AccessoryInformation);
-      if (cameraConfig.manufacturer) {
-        cameraAccessoryInfo.setCharacteristic(Characteristic.Manufacturer, cameraConfig.manufacturer);
-      }
-      if (cameraConfig.model) {
-        cameraAccessoryInfo.setCharacteristic(Characteristic.Model, cameraConfig.model);
-      }
-      if (cameraConfig.serialNumber) {
-        cameraAccessoryInfo.setCharacteristic(Characteristic.SerialNumber, cameraConfig.serialNumber);
-      }
-      if (cameraConfig.firmwareRevision) {
-        cameraAccessoryInfo.setCharacteristic(Characteristic.FirmwareRevision, cameraConfig.firmwareRevision);
-      }
+      let uuid = UUIDGen.generate(this.config.camera.name);
+      let videoDoorbellAccessory = new Accessory(this.config.camera.name, uuid, hap.Accessory.Categories.VIDEO_DOORBELL);
+      let videoDoorbellAccessoryInfo = videoDoorbellAccessory.getService(Service.AccessoryInformation);
 
-      cameraAccessory.context.log = self.log;
-      if (cameraConfig.motion) {
-        var button = new Service.Switch(cameraName);
-        cameraAccessory.addService(button);
+      videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.Manufacturer, "Mi/Aqara");
+      videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.Model, "Xiaofang");
+      videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.SerialNumber, this.config.buttonSid);
+      videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.FirmwareRevision, "1.1");
 
-        var motion = new Service.MotionSensor(cameraName);
-        cameraAccessory.addService(motion);
+      if (this.config.motion) {
+        let button = new Service.Switch(this.config.camera.name);
+        videoDoorbellAccessory.addService(button);
 
-        button.getCharacteristic(Characteristic.On)
-          .on('set', _Motion.bind(cameraAccessory));
+        let motion = new Service.MotionSensor(this.config.camera.name);
+        videoDoorbellAccessory.addService(motion);
+
+        button.getCharacteristic(Characteristic.On).on("set", this.setMotion.bind(videoDoorbellAccessory));
       }
 
-      var cameraSource = new FFMPEG(hap, cameraConfig, self.log, videoProcessor, interfaceName);
-      cameraAccessory.configureCameraSource(cameraSource);
-      configuredAccessories.push(cameraAccessory);
-    });
+      let cameraSource = new FFMPEG(hap, this.config.camera.videoConfig, this.log, videoProcessor, interfaceName);
+      videoDoorbellAccessory.configureCameraSource(cameraSource);
 
-    self.api.publishCameraAccessories("Camera-ffmpeg", configuredAccessories);
+      this.doorbellService = new Service.Doorbell(this.config.camera.name);
+      videoDoorbellAccessory.addService(this.doorbellService);
+
+      this.lockService = new Service.LockMechanism(this.config.lock.name);
+      this.lockService.getCharacteristic(Characteristic.LockTargetState).on("set", this.setLockState.bind(this));
+      this.lockService.getCharacteristic(Characteristic.LockTargetState).on("get", this.getLockTargetState.bind(this));
+      this.lockService.getCharacteristic(Characteristic.LockCurrentState).on("get", this.getLockCurrentState.bind(this));
+      this.lockService.updateCharacteristic(Characteristic.LockCurrentState, Characteristic.LockCurrentState.SECURED);
+      this.lockService.updateCharacteristic(Characteristic.LockTargetState, Characteristic.LockTargetState.SECURED);
+      videoDoorbellAccessory.addService(this.lockService);
+
+      configuredAccessories.push(videoDoorbellAccessory);
+
+      this.api.publishCameraAccessories("Camera-ffmpeg", configuredAccessories);
+    }
+  }
+
+  setMotion(on, callback) {
+    this.getService(Service.MotionSensor).setCharacteristic(Characteristic.MotionDetected, on ? 1 : 0);
+    if (on) {
+      setTimeout(() => {
+        this.getService(Service.Switch).setCharacteristic(Characteristic.On, false);
+      }, 5000);
+    }
+    callback();
   }
 };
-
-function _Motion(on, callback) {
-  this.context.log("Setting %s Motion to %s", this.displayName, on);
-
-  this.getService(Service.MotionSensor).setCharacteristic(Characteristic.MotionDetected, (on ? 1 : 0));
-  if (on) {
-    setTimeout(_Reset.bind(this), 5000);
-  }
-  callback();
-}
-
-function _Reset() {
-  this.context.log("Setting %s Button to false", this.displayName);
-
-  this.getService(Service.Switch).setCharacteristic(Characteristic.On, false);
-}

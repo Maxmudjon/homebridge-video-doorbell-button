@@ -1,11 +1,8 @@
 'use strict';
 var uuid, Service, Characteristic, StreamController;
-
 var crypto = require('crypto');
-var fs = require('fs');
 var ip = require('ip');
 var spawn = require('child_process').spawn;
-var drive = require('./drive').drive;
 
 module.exports = {
   FFMPEG: FFMPEG
@@ -18,7 +15,7 @@ function FFMPEG(hap, cameraConfig, log, videoProcessor, interfaceName) {
   StreamController = hap.StreamController;
   this.log = log;
 
-  var ffmpegOpt = cameraConfig.videoConfig;
+  var ffmpegOpt = cameraConfig;
   this.name = cameraConfig.name;
   this.vcodec = ffmpegOpt.vcodec;
   this.videoProcessor = videoProcessor || 'ffmpeg';
@@ -42,21 +39,13 @@ function FFMPEG(hap, cameraConfig, log, videoProcessor, interfaceName) {
 
   this.ffmpegSource = ffmpegOpt.source;
   this.ffmpegImageSource = ffmpegOpt.stillImageSource;
-
   this.services = [];
   this.streamControllers = [];
-
   this.pendingSessions = {};
   this.ongoingSessions = {};
-
-  this.uploader = cameraConfig.uploader || false;
-  if ( this.uploader )
-    { this.drive = new drive(); }
-
   var numberOfStreams = ffmpegOpt.maxStreams || 2;
   var videoResolutions = [];
-
-  this.maxWidth = ffmpegOpt.maxWidth || 1280;
+  this.maxWidth = ffmpegOpt.maxWidth || 1280;
   this.maxHeight = ffmpegOpt.maxHeight || 720;
   var maxFPS = (this.fps > 30) ? 30 : this.fps;
 
@@ -140,35 +129,33 @@ function FFMPEG(hap, cameraConfig, log, videoProcessor, interfaceName) {
   this._createStreamControllers(numberOfStreams, options);
 }
 
-FFMPEG.prototype.handleCloseConnection = function(connectionID) {
-  this.streamControllers.forEach(function(controller) {
+FFMPEG.prototype.handleCloseConnection = function (connectionID) {
+  this.streamControllers.forEach(function (controller) {
     controller.handleCloseConnection(connectionID);
   });
 }
 
-FFMPEG.prototype.handleSnapshotRequest = function(request, callback) {
+FFMPEG.prototype.handleSnapshotRequest = function (request, callback) {
   let resolution = request.width + 'x' + request.height;
   var imageSource = this.ffmpegImageSource !== undefined ? this.ffmpegImageSource : this.ffmpegSource;
-  let ffmpeg = spawn(this.videoProcessor, (imageSource + ' -t 1 -s '+ resolution + ' -f image2 -').split(' '), {env: process.env});
+  let ffmpeg = spawn(this.videoProcessor, (imageSource + ' -t 1 -s ' + resolution + ' -f image2 -').split(' '), { env: process.env });
   var imageBuffer = Buffer.alloc(0);
   this.log("Snapshot from " + this.name + " at " + resolution);
-  if(this.debug) console.log('ffmpeg '+imageSource + ' -t 1 -s '+ resolution + ' -f image2 -');
-  ffmpeg.stdout.on('data', function(data) {
+  if (this.debug) console.log('ffmpeg ' + imageSource + ' -t 1 -s ' + resolution + ' -f image2 -');
+  ffmpeg.stdout.on('data', function (data) {
     imageBuffer = Buffer.concat([imageBuffer, data]);
   });
   let self = this;
-  ffmpeg.on('error', function(error){
+  ffmpeg.on('error', function (error) {
     self.log("An error occurs while making snapshot request");
     self.debug ? self.log(error) : null;
   });
-  ffmpeg.on('close', function(code) {
-    if ( this.uploader )
-      { this.drive.storePicture(this.name,imageBuffer); }
+  ffmpeg.on('close', function (code) {
     callback(undefined, imageBuffer);
   }.bind(this));
 }
 
-FFMPEG.prototype.prepareStream = function(request, callback) {
+FFMPEG.prototype.prepareStream = function (request, callback) {
   var sessionInfo = {};
 
   let sessionID = request["sessionID"];
@@ -245,7 +232,7 @@ FFMPEG.prototype.prepareStream = function(request, callback) {
   callback(response);
 }
 
-FFMPEG.prototype.handleStreamRequest = function(request) {
+FFMPEG.prototype.handleStreamRequest = function (request) {
   var sessionID = request["sessionID"];
   var requestType = request["type"];
   if (sessionID) {
@@ -276,7 +263,7 @@ FFMPEG.prototype.handleStreamRequest = function(request) {
           if (expectedFPS < fps) {
             fps = expectedFPS;
           }
-          if(videoInfo["max_bit_rate"] < vbitrate) {
+          if (videoInfo["max_bit_rate"] < vbitrate) {
             vbitrate = videoInfo["max_bit_rate"];
           }
         }
@@ -301,10 +288,10 @@ FFMPEG.prototype.handleStreamRequest = function(request) {
         if (videoFilter !== null && videoFilter !== 'none') {
           vf.push(videoFilter)
 
-          if(this.hflip)
+          if (this.hflip)
             vf.push('hflip');
 
-          if(this.vflip)
+          if (this.vflip)
             vf.push('vflip');
         }
 
@@ -318,8 +305,8 @@ FFMPEG.prototype.handleStreamRequest = function(request) {
           ' ' + additionalCommandline +
           ((vf.length > 0) ? (' -vf ' + vf.join(',')) : ('')) +
           ' -b:v ' + vbitrate + 'k' +
-          ' -bufsize ' + vbitrate+ 'k' +
-          ' -maxrate '+ vbitrate + 'k' +
+          ' -bufsize ' + vbitrate + 'k' +
+          ' -maxrate ' + vbitrate + 'k' +
           ' -payload_type 99';
 
         let ffmpegVideoStream = ' -ssrc ' + videoSsrc +
@@ -336,26 +323,26 @@ FFMPEG.prototype.handleStreamRequest = function(request) {
         fcmd += ffmpegVideoStream;
 
         // build optional audio arguments
-        if(this.audio) {
+        if (this.audio) {
           let ffmpegAudioArgs = ' -map ' + mapaudio +
-              ' -acodec ' + acodec +
-              ' -profile:a aac_eld' +
-              ' -flags +global_header' +
-              ' -f null' +
-              ' -ar ' + asamplerate + 'k' +
-              ' -b:a ' + abitrate + 'k' +
-              ' -bufsize ' + abitrate + 'k' +
-              ' -ac 1' +
-              ' -payload_type 110';
+            ' -acodec ' + acodec +
+            ' -profile:a aac_eld' +
+            ' -flags +global_header' +
+            ' -f null' +
+            ' -ar ' + asamplerate + 'k' +
+            ' -b:a ' + abitrate + 'k' +
+            ' -bufsize ' + abitrate + 'k' +
+            ' -ac 1' +
+            ' -payload_type 110';
 
           let ffmpegAudioStream = ' -ssrc ' + audioSsrc +
-              ' -f rtp' +
-              ' -srtp_out_suite AES_CM_128_HMAC_SHA1_80' +
-              ' -srtp_out_params ' + audioKey.toString('base64') +
-              ' srtp://' + targetAddress + ':' + targetAudioPort +
-              '?rtcpport=' + targetAudioPort +
-              '&localrtcpport=' + targetAudioPort +
-              '&pkt_size=' + packetsize;
+            ' -f rtp' +
+            ' -srtp_out_suite AES_CM_128_HMAC_SHA1_80' +
+            ' -srtp_out_params ' + audioKey.toString('base64') +
+            ' srtp://' + targetAddress + ':' + targetAudioPort +
+            '?rtcpport=' + targetAudioPort +
+            '&localrtcpport=' + targetAudioPort +
+            '&pkt_size=' + packetsize;
 
           fcmd += ffmpegAudioArgs;
           fcmd += ffmpegAudioStream;
@@ -366,33 +353,33 @@ FFMPEG.prototype.handleStreamRequest = function(request) {
         }
 
         // start the process
-        let ffmpeg = spawn(this.videoProcessor, fcmd.split(' '), {env: process.env});
+        let ffmpeg = spawn(this.videoProcessor, fcmd.split(' '), { env: process.env });
         this.log("Start streaming video from " + this.name + " with " + width + "x" + height + "@" + vbitrate + "kBit");
-        if(this.debug){
+        if (this.debug) {
           console.log("ffmpeg " + fcmd);
         }
 
         // Always setup hook on stderr.
         // Without this streaming stops within one to two minutes.
-        ffmpeg.stderr.on('data', function(data) {
+        ffmpeg.stderr.on('data', function (data) {
           // Do not log to the console if debugging is turned off
-          if(this.debug){
+          if (this.debug) {
             console.log(data.toString());
           }
         }.bind(this));
         let self = this;
-        ffmpeg.on('error', function(error){
-            self.log("An error occurs while making stream request");
-            self.debug ? self.log(error) : null;
+        ffmpeg.on('error', function (error) {
+          self.log("An error occurs while making stream request");
+          self.debug ? self.log(error) : null;
         });
         ffmpeg.on('close', (code) => {
-          if(code == null || code == 0 || code == 255){
+          if (code == null || code == 0 || code == 255) {
             self.log("Stopped streaming");
           } else {
             self.log("ERROR: FFmpeg exited with code " + code);
-            for(var i=0; i < self.streamControllers.length; i++){
+            for (var i = 0; i < self.streamControllers.length; i++) {
               var controller = self.streamControllers[i];
-              if(controller.sessionIdentifier === sessionID){
+              if (controller.sessionIdentifier === sessionID) {
                 controller.forceStop();
               }
             }
@@ -412,12 +399,12 @@ FFMPEG.prototype.handleStreamRequest = function(request) {
   }
 }
 
-FFMPEG.prototype.createCameraControlService = function() {
+FFMPEG.prototype.createCameraControlService = function () {
   var controlService = new Service.CameraControl();
 
   this.services.push(controlService);
 
-  if(this.audio){
+  if (this.audio) {
     var microphoneService = new Service.Microphone();
     this.services.push(microphoneService);
   }
@@ -425,7 +412,7 @@ FFMPEG.prototype.createCameraControlService = function() {
 
 // Private
 
-FFMPEG.prototype._createStreamControllers = function(maxStreams, options) {
+FFMPEG.prototype._createStreamControllers = function (maxStreams, options) {
   let self = this;
 
   for (var i = 0; i < maxStreams; i++) {

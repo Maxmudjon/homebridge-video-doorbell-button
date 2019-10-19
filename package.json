@@ -1,52 +1,80 @@
 {
-  "_from": "homebridge-camera-ffmpeg",
-  "_id": "homebridge-camera-ffmpeg@0.1.13",
+  "_from": "homebridge-video-doorbell-button",
+  "_id": "homebridge-video-doorbell-button@0.0.2",
   "_inBundle": false,
-  "_integrity": "sha512-z84klnm3SRNUPg0EfUsA3LoBYDaRGNijq2GvStLEwVwInqvqdv5s6Daror9vWU11412GcnlC/wxBcfXmQEy2QA==",
-  "_location": "/homebridge-camera-ffmpeg",
+  "_integrity": "sha512-jsFpY1f5dMmxCquc8w2X3FWlmYcMu7RMDfgwYNEV8mx0UpVwOy+tHBv7JXBkhG7l2TffjI0u1nMJ7MYOa3IYYA==",
+  "_location": "/homebridge-video-doorbell-button",
   "_phantomChildren": {},
   "_requested": {
     "type": "tag",
     "registry": true,
-    "raw": "homebridge-camera-ffmpeg",
-    "name": "homebridge-camera-ffmpeg",
-    "escapedName": "homebridge-camera-ffmpeg",
+    "raw": "homebridge-video-doorbell-button",
+    "name": "homebridge-video-doorbell-button",
+    "escapedName": "homebridge-video-doorbell-button",
     "rawSpec": "",
     "saveSpec": null,
     "fetchSpec": "latest"
   },
   "_requiredBy": [
-    "#USER",
-    "/"
+    "#USER"
   ],
-  "_resolved": "https://registry.npmjs.org/homebridge-camera-ffmpeg/-/homebridge-camera-ffmpeg-0.1.13.tgz",
-  "_shasum": "84c317964d7f9d62f73c7c184ab623d3b4b06fc3",
-  "_spec": "homebridge-camera-ffmpeg",
+  "_resolved": "https://registry.npmjs.org/homebridge-video-doorbell-button/-/homebridge-video-doorbell-button-0.0.2.tgz",
+  "_shasum": "103b5e04d7cc60d0e5e80becc9022fd65f586321",
+  "_spec": "homebridge-video-doorbell-button",
   "_where": "/home/pi",
+  "author": {
+    "name": "Payziyev Maxmudjon"
+  },
   "bugs": {
-    "url": "http://github.com/KhaosT/homebridge-camera-ffmpeg/issues"
+    "url": "http://github.com/Maxmudjon/homebridge-video-doorbell-button/issues"
   },
   "bundleDependencies": false,
   "dependencies": {
-    "debug": "^2.2.0",
-    "googleapis": ">=39.1.0",
-    "ip": "^1.1.3"
+    "bindings": "^1.3.0",
+    "buffer-alloc": "^1.1.0",
+    "buffer-alloc-unsafe": "^0.1.1",
+    "buffer-fill": "^0.1.1",
+    "core-util-is": "^1.0.2",
+    "debug": "^3.1.0",
+    "inherits": "^2.0.3",
+    "ip": "^1.1.3",
+    "isarray": "^1.0.0",
+    "ms": "^2.0.0",
+    "nan": "^2.10.0",
+    "process-nextick-args": "^2.0.0",
+    "readable-stream": "^2.3.5",
+    "rpi-gpio": "^2.1.4",
+    "safe-buffer": "^5.1.1",
+    "string_decoder": "^1.0.3",
+    "user": "0.0.0",
+    "util-deprecate": "^1.0.2"
   },
   "deprecated": false,
   "description": "ffmpeg plugin for homebridge: https://github.com/nfarina/homebridge",
+  "devDependencies": {},
+  "directories": {},
   "engines": {
     "homebridge": ">=0.4.5",
     "node": ">=5.0.0"
   },
-  "homepage": "https://github.com/KhaosT/homebridge-camera-ffmpeg#readme",
+  "homepage": "https://github.com/Maxmudjon/homebridge-video-doorbell-button#readme",
   "keywords": [
     "homebridge-plugin"
   ],
   "license": "ISC",
-  "name": "homebridge-camera-ffmpeg",
+  "main": "index.js",
+  "maintainers": [
+    {
+      "name": "Maxmudjon Payziyev",
+      "email": "bio42@mail.ru"
+    }
+  ],
+  "name": "homebridge-video-doorbell-button",
+  "optionalDependencies": {},
   "repository": {
     "type": "git",
-    "url": "git://github.com/KhaosT/homebridge-camera-ffmpeg.git"
+    "url": "git://github.com/Maxmudjon/homebridge-video-doorbell-button.git"
   },
-  "version": "0.1.13"
+  "scripts": {},
+  "version": "0.0.2"
 }
