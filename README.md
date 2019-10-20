@@ -20,12 +20,11 @@ npm install -g npm i homebridge-video-doorbell-button --unsafe-perm
 ```
 {
   "platform": "Video-DoorbellV2",
-  "buttonSid": "158d00029088e3",
   "camera": {
     "name": "Домофон",
     "videoConfig": {
-      "source": "-rtsp_transport tcp -i rtsp://ip-addres/unicast",
-      "stillImageSource": "-i rtsp://ip-addres/unicast -vframes 1 -r 1",
+      "source": "-rtsp_transport tcp -i rtsp://192.168.1.16/unicast",
+      "stillImageSource": "-i rtsp://192.168.1.16/unicast -vframes 1 -r 1",
       "maxStreams": 2,
       "maxWidth": 1280,
       "maxHeight": 720,
@@ -35,13 +34,22 @@ npm install -g npm i homebridge-video-doorbell-button --unsafe-perm
       "vcodec": "h264_omx"
     }
   },
-  "lock": {
-    "name": "Lock mechanism"
+  "event": {
+    "buttonSid": "158d00029088e3",
+    "gpio": 7,
+    "motion": false,
+    "switch": {
+      "name": "Ding Dong"
+    }
   },
-  "gpio": 7,
-  "motion": true
+  "lock": {
+    "name": "Lock mechanism",
+    "gpio": 5
+  }
 }
 ```
+
+## Events
 
 ### buttonSid
 
@@ -49,10 +57,18 @@ sid for Mi or Aqara switch.
 
 ### gpio
 
-GPIO number, to trigger plug to ground.
+GPIO number, to trigger plug to ground (GND).
 
 ### motion
 
 virtual motion accessory and switch for trigger motion.
+
+### switch
+
+virtual switch accessory for trigger doorbell.
+
+```diff
+- You cannot add "motion" and "switch" at the same time
+```
 
 Incidentally, check [iSpyConnect's camera database](https://www.ispyconnect.com/sources.aspx) to find likely protocols and URLs to try with your camera.

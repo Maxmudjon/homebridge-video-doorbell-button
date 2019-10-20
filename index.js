@@ -17,7 +17,7 @@ let videoDoorbellPlatform = class {
   constructor(log, config, api) {
     this.log = log;
     this.config = config || {};
-    this.buttonSid = config["buttonSid"] || 0;
+    this.buttonSid = config.event.buttonSid || 0;
     this.buttonState = 0;
     this.locked = 1;
     this.serverSocket = new dgram.createSocket({
@@ -30,7 +30,7 @@ let videoDoorbellPlatform = class {
     this.log.info("🔔    bio42@mail.ru        🔔");
     this.log.info("🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔");
 
-    if (this.config.buttonSid) {
+    if (this.config.event.buttonSid) {
       this.startServer();
     }
 
@@ -44,7 +44,7 @@ let videoDoorbellPlatform = class {
       this.api.on("didFinishLaunching", event => this.didFinishLaunching(event));
     }
 
-    if (this.config.gpio) {
+    if (this.config.event.gpio) {
       gpio.on("change", (channel, value) => {
         if (value == true) {
           clearTimeout(this.clickButton);
@@ -54,7 +54,7 @@ let videoDoorbellPlatform = class {
           }, 100);
         }
       });
-      gpio.setup(this.config.gpio, gpio.DIR_IN, gpio.EDGE_BOTH);
+      gpio.setup(this.config.event.gpio, gpio.DIR_IN, gpio.EDGE_BOTH);
     }
   }
 
@@ -101,6 +101,37 @@ let videoDoorbellPlatform = class {
   }
 
   setLockState(state, callback) {
+    if (this.config.lock.gpio) {
+      gpio.setup(this.config.lock.gpio, gpio.DIR_HIGH, write.bind(this));
+
+      function write(err) {
+        if (err) {
+          this.log(err);
+          return;
+        }
+
+        if (!state) {
+          gpio.write(this.config.lock.gpio, true, err => {
+            if (err) {
+              this.log(err);
+              return;
+            }
+            this.log("Written to pin High to Open");
+          });
+
+          setTimeout(() => {
+            gpio.write(this.config.lock.gpio, false, err => {
+              if (err) {
+                this.log(err);
+                return;
+              }
+              this.log("Written to pin Low to Close");
+            });
+          }, 500);
+        }
+      }
+    }
+
     if (this.locked != state) {
       this.locked = state;
       this.lockService.updateCharacteristic(Characteristic.LockCurrentState, this.locked ? Characteristic.LockCurrentState.SECURED : Characteristic.LockCurrentState.UNSECURED);
@@ -134,10 +165,10 @@ let videoDoorbellPlatform = class {
 
       videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.Manufacturer, "Mi/Aqara");
       videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.Model, "Xiaofang");
-      videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.SerialNumber, this.config.buttonSid);
+      videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.SerialNumber, this.config.event.buttonSid);
       videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.FirmwareRevision, "1.1");
 
-      if (this.config.motion) {
+      if (this.config.event.motion && !this.config.event.switch) {
         let button = new Service.Switch(this.config.camera.name);
         videoDoorbellAccessory.addService(button);
 
@@ -145,6 +176,13 @@ let videoDoorbellPlatform = class {
         videoDoorbellAccessory.addService(motion);
 
         button.getCharacteristic(Characteristic.On).on("set", this.setMotion.bind(videoDoorbellAccessory));
+      }
+
+      if (this.config.event.switch && !this.config.event.motion) {
+        let virtualSwitch = new Service.Switch(this.config.event.switch.name);
+        videoDoorbellAccessory.addService(virtualSwitch);
+
+        virtualSwitch.getCharacteristic(Characteristic.On).on("set", this.setSwitch.bind(videoDoorbellAccessory));
       }
 
       let cameraSource = new FFMPEG(hap, this.config.camera.videoConfig, this.log, videoProcessor, interfaceName);
@@ -170,6 +208,16 @@ let videoDoorbellPlatform = class {
   setMotion(on, callback) {
     this.getService(Service.MotionSensor).setCharacteristic(Characteristic.MotionDetected, on ? 1 : 0);
     if (on) {
+      setTimeout(() => {
+        this.getService(Service.Switch).setCharacteristic(Characteristic.On, false);
+      }, 5000);
+    }
+    callback();
+  }
+
+  setSwitch(on, callback) {
+    if (on) {
+      this.getService(Service.Doorbell).setCharacteristic(Characteristic.ProgrammableSwitchEvent, 1);
       setTimeout(() => {
         this.getService(Service.Switch).setCharacteristic(Characteristic.On, false);
       }, 5000);
