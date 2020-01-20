@@ -16,22 +16,34 @@ module.exports = homebridge => {
 let videoDoorbellPlatform = class {
   constructor(log, config, api) {
     this.log = log;
-    this.config = config || {};
-    this.buttonSid = config.event.buttonSid || 0;
+    this.config = config;
     this.buttonState = 0;
     this.locked = 1;
-    this.serverSocket = new dgram.createSocket({
-      type: "udp4",
-      reuseAddr: true
-    });
-
     this.log.info("🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔");
     this.log.info("🔔    Payziyev Maxmujon    🔔");
     this.log.info("🔔    bio42@mail.ru        🔔");
     this.log.info("🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔");
 
-    if (this.config.event.buttonSid) {
-      this.startServer();
+    if (this.config && this.config.event) {
+      if (this.config.event.buttonSid) {
+        this.serverSocket = new dgram.createSocket({
+          type: "udp4",
+          reuseAddr: true
+        });
+        this.buttonSid = config.event.buttonSid;
+        this.startServer();
+      } else if (this.config.event.gpio) {
+        gpio.on("change", (channel, value) => {
+          if (value == true) {
+            clearTimeout(this.clickButton);
+            this.clickButton = setTimeout(() => {
+              this.log("GPIO button is pressed");
+              this.doorbellService.getCharacteristic(Characteristic.ProgrammableSwitchEvent).setValue(1);
+            }, 100);
+          }
+        });
+        gpio.setup(this.config.event.gpio, gpio.DIR_IN, gpio.EDGE_BOTH);
+      }
     }
 
     if (api) {
@@ -42,19 +54,6 @@ let videoDoorbellPlatform = class {
       }
 
       this.api.on("didFinishLaunching", event => this.didFinishLaunching(event));
-    }
-
-    if (this.config.event.gpio) {
-      gpio.on("change", (channel, value) => {
-        if (value == true) {
-          clearTimeout(this.clickButton);
-          this.clickButton = setTimeout(() => {
-            this.log("GPIO button is pressed");
-            this.doorbellService.getCharacteristic(Characteristic.ProgrammableSwitchEvent).setValue(1);
-          }, 100);
-        }
-      });
-      gpio.setup(this.config.event.gpio, gpio.DIR_IN, gpio.EDGE_BOTH);
     }
   }
 
@@ -168,7 +167,7 @@ let videoDoorbellPlatform = class {
       videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.SerialNumber, this.config.event.buttonSid);
       videoDoorbellAccessoryInfo.setCharacteristic(Characteristic.FirmwareRevision, "1.1");
 
-      if (this.config.event.motion && !this.config.event.switch) {
+      if (this.config && this.config.event && this.config.event.motion && !this.config.event.switch) {
         let button = new Service.Switch(this.config.camera.name);
         videoDoorbellAccessory.addService(button);
 
@@ -178,7 +177,7 @@ let videoDoorbellPlatform = class {
         button.getCharacteristic(Characteristic.On).on("set", this.setMotion.bind(videoDoorbellAccessory));
       }
 
-      if (this.config.event.switch && !this.config.event.motion) {
+      if (this.config && this.config.event && this.config.event.switch && !this.config.event.motion) {
         let virtualSwitch = new Service.Switch(this.config.event.switch.name);
         videoDoorbellAccessory.addService(virtualSwitch);
 
@@ -191,13 +190,15 @@ let videoDoorbellPlatform = class {
       this.doorbellService = new Service.Doorbell(this.config.camera.name);
       videoDoorbellAccessory.addService(this.doorbellService);
 
-      this.lockService = new Service.LockMechanism(this.config.lock.name);
-      this.lockService.getCharacteristic(Characteristic.LockTargetState).on("set", this.setLockState.bind(this));
-      this.lockService.getCharacteristic(Characteristic.LockTargetState).on("get", this.getLockTargetState.bind(this));
-      this.lockService.getCharacteristic(Characteristic.LockCurrentState).on("get", this.getLockCurrentState.bind(this));
-      this.lockService.updateCharacteristic(Characteristic.LockCurrentState, Characteristic.LockCurrentState.SECURED);
-      this.lockService.updateCharacteristic(Characteristic.LockTargetState, Characteristic.LockTargetState.SECURED);
-      videoDoorbellAccessory.addService(this.lockService);
+      if (this.config && this.config.lock) {
+        this.lockService = new Service.LockMechanism(this.config.lock.name);
+        this.lockService.getCharacteristic(Characteristic.LockTargetState).on("set", this.setLockState.bind(this));
+        this.lockService.getCharacteristic(Characteristic.LockTargetState).on("get", this.getLockTargetState.bind(this));
+        this.lockService.getCharacteristic(Characteristic.LockCurrentState).on("get", this.getLockCurrentState.bind(this));
+        this.lockService.updateCharacteristic(Characteristic.LockCurrentState, Characteristic.LockCurrentState.SECURED);
+        this.lockService.updateCharacteristic(Characteristic.LockTargetState, Characteristic.LockTargetState.SECURED);
+        videoDoorbellAccessory.addService(this.lockService);
+      }
 
       configuredAccessories.push(videoDoorbellAccessory);
 
