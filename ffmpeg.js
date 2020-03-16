@@ -138,6 +138,9 @@ FFMPEG.prototype.handleCloseConnection = function (connectionID) {
 FFMPEG.prototype.handleSnapshotRequest = function (request, callback) {
   let resolution = request.width + 'x' + request.height;
   var imageSource = this.ffmpegImageSource !== undefined ? this.ffmpegImageSource : this.ffmpegSource;
+  if (imageSource == "arlo") {
+    imageSource = "-i " + this.retrieveArloURL("presignedLastImageUrl");
+  }
   let ffmpeg = spawn(this.videoProcessor, (imageSource + ' -t 1 -s ' + resolution + ' -f image2 -').split(' '), { env: process.env });
   var imageBuffer = Buffer.alloc(0);
   this.log("Snapshot from " + this.name + " at " + resolution);
@@ -282,7 +285,16 @@ FFMPEG.prototype.handleStreamRequest = function (request) {
         let audioKey = sessionInfo["audio_srtp"];
         let audioSsrc = sessionInfo["audio_ssrc"];
         let vf = [];
+        
+        var videoSource = this.ffmpegSource;
+        var videoStreamMapping = ' -map 0:0';
+        var audioStreamMapping = ' -map 0:1';
 
+        if (videoSource == "arlo") {
+          videoSource = "-rtsp_transport tcp -re -i " + this.retrieveArloURL("getStreamingURL");
+          videoStreamMapping = ' -map 0:1';
+          audioStreamMapping = ' -map 0:0';
+        
         let videoFilter = ((this.videoFilter === '') ? ('scale=' + width + ':' + height + '') : (this.videoFilter)); // empty string indicates default
         // In the case of null, skip entirely
         if (videoFilter !== null && videoFilter !== 'none') {
@@ -294,7 +306,7 @@ FFMPEG.prototype.handleStreamRequest = function (request) {
           if (this.vflip)
             vf.push('vflip');
         }
-
+        
         let fcmd = this.ffmpegSource;
 
         let ffmpegVideoArgs = ' -map ' + mapvideo +
@@ -397,6 +409,23 @@ FFMPEG.prototype.handleStreamRequest = function (request) {
       delete this.ongoingSessions[sessionIdentifier];
     }
   }
+}
+FFMPEG.prototype.retrieveArloURL = function(urlType) {
+
+  if (this.debug)
+    this.log("Retrieving Arlo URL for camera index : " + this.videoConfig.arloCameraIndex);
+
+  var scriptExecution = spawnSync("python", [__dirname+'/arlo.py', this.videoConfig.arloUserName, this.videoConfig.arloPassword, urlType, this.videoConfig.arloCameraIndex], {env: process.env});
+
+  var arloUrl = scriptExecution.stdout.toString().trim();
+
+  if (scriptExecution.stderr.toString().length > 0)
+    console.log("error : " + scriptExecution.stderr.toString())
+
+  if(this.debug)
+    this.log(arloUrl);
+
+  return arloUrl;
 }
 
 FFMPEG.prototype.createCameraControlService = function () {
